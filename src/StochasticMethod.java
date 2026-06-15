@@ -1,4 +1,6 @@
 import org.ejml.simple.SimpleMatrix;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.JFreeChart;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -8,10 +10,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class StochasticMethod {
-    private static final String alpha_char = "\u03B1";
-    private static final String lambda_char = "\u03BB";
+    static final String alpha_char = "α";
+    static final String lambda_char = "λ";
     static final double K_PROBABILITY = 0.4;
-    static final SimpleMatrix BaseP = new SimpleMatrix(new double[][]{{0.15, 0.2, 0.15, 0.1}, {0.35, 0.25, 0, 0}, {0.35, 0, 0.25, 0}, {0.35, 0, 0, 0.25}});
+    static final int K_SERVICE_TIME = 25;
+    static final SimpleMatrix BaseP = new SimpleMatrix(new double[][]{
+            {0.15, 0.2, 0.15, 0.1},
+            {0.35, 0.25, 0, 0},
+            {0.35, 0, 0.25, 0},
+            {0.35, 0, 0, 0.25}});
 
     static SimpleMatrix getP(int k) {
         SimpleMatrix P = new SimpleMatrix(BaseP.getNumRows() + k, BaseP.getNumCols() + k);
@@ -28,40 +35,38 @@ public class StochasticMethod {
         return A;
     }
 
-    static List<SimpleMatrix> getLambdas(int kLow, int kHigh, double[] r_values) {
+    static List<SimpleMatrix> getLambdas(int kLow, int kHigh) {
         ArrayList<SimpleMatrix> lambdas = new ArrayList<>();
         for (int k = kLow; k <= kHigh; k++) {
-            for (double r : r_values) {
-                SimpleMatrix A = getA(k);
-                SimpleMatrix P = getP(k);
-                // lambda = (I - P^T)-1 * A
-                SimpleMatrix lambda = SimpleMatrix.identity(P.getNumRows()).minus(P.transpose()).invert().mult(A);
-                lambdas.add(lambda.scale(r));
-            }
+            SimpleMatrix A = getA(k);
+            SimpleMatrix P = getP(k);
+            // lambda = (I - P^T)-1 * A
+            SimpleMatrix lambda = SimpleMatrix.identity(P.getNumRows()).minus(P.transpose()).invert().mult(A);
+            lambdas.add(lambda);
         }
         return lambdas;
     }
 
-    static void lambdasToCSV(int kLow, int kHigh, double[] r_values, List<SimpleMatrix> lambdas, String filename) {
+    static void lambdasToCSV(int kLow, List<SimpleMatrix> lambdas, String filename) {
         Path path = Path.of("results/" + filename + ".csv");
-        StringBuilder sb = new StringBuilder("K,R,");
-        for(int i = 1; i <= lambdas.getLast().getNumRows(); i++) {
+        StringBuilder sb = new StringBuilder("K,");
+        for (int i = 1; i <= lambdas.getLast().getNumRows(); i++) {
             sb.append(lambda_char).append(i).append('(').append(alpha_char).append(')');
-            if(i != lambdas.getLast().getNumRows()) sb.append(',');
+            if (i != lambdas.getLast().getNumRows()) sb.append(',');
             else sb.append('\n');
         }
-        
-        for (int k = kLow; k <= kHigh; k++) {
-            for (double r : r_values) {
-                SimpleMatrix lambda = lambdas.removeFirst();
-                sb.append(k).append(',').append(r).append(',');
-                for(int i = 0; i < lambda.getNumRows(); i++){
-                    sb.append(String.format("%.2f", lambda.get(i)));
-                    sb.append('*').append(alpha_char);
-                    if(i != lambda.getNumRows() - 1) sb.append(',');
-                    else sb.append('\n');
-                }
+
+        int k = kLow;
+        for (SimpleMatrix lambda : lambdas) {
+            sb.append(k).append(',');
+            for (int i = 0; i < lambda.getNumRows(); i++) {
+                sb.append(String.format("%.2f", lambda.get(i)));
+                sb.append('*').append(alpha_char);
+                if (i != lambda.getNumRows() - 1) sb.append(',');
+                else sb.append('\n');
             }
+            k++;
+
         }
         try {
             Files.writeString(path, "\uFEFF" + sb, StandardCharsets.UTF_8);
@@ -71,16 +76,53 @@ public class StochasticMethod {
 
     }
 
+    static double findAlphaMax(SimpleMatrix lambda, int[] base_service_times, int k, int k_service_time) {
+        int[] service_times = new int[base_service_times.length + k];
+        for (int i = 0; i < base_service_times.length + k; i++) {
+            if (i < base_service_times.length) {
+                service_times[i] = base_service_times[i];
+            } else {
+                service_times[i] = k_service_time;
+            }
+        }
+        double alphaMax = Double.POSITIVE_INFINITY;
+        int index = -1;
+        for (int i = 0; i < service_times.length; i++) {
+            double local = (double) 1000 / service_times[i] / lambda.get(i);
+            if (local < alphaMax) {
+                alphaMax = local;
+                index = i;
+            }
+        }
+        String critical = switch (index){
+            case 0 -> "Sp";
+            case 1 -> "Sd1";
+            case 2 -> "Sd2";
+            case 3 -> "Sd3";
+            default -> "Sdk";
+        };
+        System.out.println(k + "\t" + String.format("%.2f", alphaMax) + "\t\t" + critical);
+        return alphaMax;
+    }
+    //static void createAlphaChart(double[])
+
     public static void main(String[] args) {
         double[] r_values = {0.3, 0.55, 0.8, 1};
         int kLow = 2;
         int kHigh = 5; // k = 2,3,4,5
         int[] base_service_times = {4, 10, 15, 15};
-        List<SimpleMatrix> lambdas = getLambdas(kLow, kHigh, r_values);
-        lambdasToCSV(kLow, kHigh, r_values, lambdas, "rezultati_analiticki");
-        for (SimpleMatrix lambda : lambdas)
-            lambda.print("%.2f");
 
+        List<SimpleMatrix> lambdas = getLambdas(kLow, kHigh);
+        // 1)
+        lambdasToCSV(kLow, lambdas, "protoci_analiticki");
+        // 2)
+        System.out.println("K\t" + alpha_char + "max\t\t" + "critical");
+        double[] alphaMaxArray = new double[lambdas.size()];
+        for (SimpleMatrix lambda : lambdas) {
+            int index = lambdas.indexOf(lambda);
+            alphaMaxArray[index] = findAlphaMax(lambda, base_service_times, kLow + index, K_SERVICE_TIME);
+        }
+        
     }
 
 }
