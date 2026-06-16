@@ -5,6 +5,7 @@ import org.jfree.chart.JFreeChart;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
 
+import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -160,16 +161,28 @@ public class StochasticMethod {
     static double getResponseTime(SimpleMatrix jobs, double alphaMax, double r) {
         return jobs.elementSum() / (alphaMax * r);
     }
-
-    /*static StringBuilder writeRow(StringBuilder sb, ){
-        
-        return sb;
-    }*/
+    static void addMatrixToStringBuilder(StringBuilder sb, SimpleMatrix sm, int size) {
+        for(int i = 0; i < size; i++) {
+            if(i < sm.getNumElements()) {
+                sb.append(String.format("%.4f",sm.get(i))).append(',');
+            } else sb.append("0.0000").append(',');
+        }
+    }
+    
     static void solveNetworkAndWriteToCSV(List<SimpleMatrix> lambdas, double[] r_values, double[] base_service_times, double[] alpha_max_array, int kLow, int kHigh, double k_service_time, String filename) {
         Path path = Path.of("results/" + filename + ".csv");
         StringBuilder sb = getHeader(kHigh);
-        for (int k = kLow; k <= kHigh; k++) {
-            for (double r : r_values) {
+        XYSeriesCollection collectionX = new XYSeriesCollection();
+        XYSeriesCollection collectionU = new XYSeriesCollection();
+        XYSeriesCollection collectionJ = new XYSeriesCollection();
+        XYSeriesCollection collectionT = new XYSeriesCollection();
+        
+        for (double r : r_values) {
+            List<SimpleMatrix> XList = new ArrayList<>();
+            List<SimpleMatrix> UList = new ArrayList<>();
+            List<SimpleMatrix> JList = new ArrayList<>();
+            List<Double> TList = new ArrayList<>();
+            for (int k = kLow; k <= kHigh; k++) {
                 double[] service_times = extendServiceTimes(base_service_times, k, k_service_time);
                 SimpleMatrix lambda = lambdas.get(k - kLow);
                 double alpha_max = alpha_max_array[k - kLow];
@@ -177,9 +190,34 @@ public class StochasticMethod {
                 SimpleMatrix U = getUsage(X, service_times);
                 SimpleMatrix J = getAvgJobs(U);
                 double T = getResponseTime(J, alpha_max, r);
-                System.out.println(T);
-                
-            }
+                sb.append(k).append(',').append(r).append(',');
+                addMatrixToStringBuilder(sb, U, base_service_times.length + kHigh);
+                addMatrixToStringBuilder(sb, X, base_service_times.length + kHigh);
+                addMatrixToStringBuilder(sb, J, base_service_times.length + kHigh);
+                sb.append(String.format("%.4f", T));
+                sb.append('\n');
+                XList.add(X);
+                UList.add(U);
+                JList.add(J);
+                TList.add(T);
+            }      
+            XYSeries Xseries = new XYSeries(r);
+            XYSeries Useries = new XYSeries(r);
+            XYSeries Jseries = new XYSeries(r);
+            XYSeries Tseries = new XYSeries(r);
+            collectionX.addSeries(Xseries);
+            collectionU.addSeries(Useries);
+            collectionJ.addSeries(Jseries);
+            collectionT.addSeries(Tseries);
+        }
+        JFreeChart chartX = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
+        JFreeChart chartU = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
+        JFreeChart chartJ = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
+        JFreeChart chartT = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
+        try {
+            ChartUtilities.saveChartAsPNG(new File("results/" + filename + ".png"), chart, 800, 600);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
         try {
             Files.writeString(path, sb, StandardCharsets.UTF_8);
@@ -206,7 +244,7 @@ public class StochasticMethod {
         }
         createAlphaChart(alphaMaxArray, kLow, "alpha_chart");
         // 3)
-        double[] r_values = {0.3, 0.55, 0.8, 0.99};
+        double[] r_values = {0.3, 0.55, 0.8, 1};
         solveNetworkAndWriteToCSV(lambdas, r_values, base_service_times, alphaMaxArray, kLow, kHigh, K_SERVICE_TIME, "rezultati_analiticki");
     }
 
