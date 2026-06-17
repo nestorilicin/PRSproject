@@ -2,10 +2,11 @@ import org.ejml.simple.SimpleMatrix;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartUtilities;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
 
-import javax.swing.*;
+import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -117,12 +118,9 @@ public class StochasticMethod {
             series.add(kLow + i, alphas[i]);
         }
         XYSeriesCollection collection = new XYSeriesCollection(series);
-        JFreeChart chart = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
-        try {
-            ChartUtilities.saveChartAsPNG(new File("results/" + filename + ".png"), chart, 800, 600);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        JFreeChart chart = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max", collection);
+        XYPlot plot = chart.getXYPlot();
+        saveWhiteChart(filename, chart, plot);
     }
 
     static StringBuilder getHeader(int kHigh) {
@@ -152,36 +150,104 @@ public class StochasticMethod {
 
     static SimpleMatrix getAvgJobs(SimpleMatrix usage) {
         SimpleMatrix J = new SimpleMatrix(usage.getNumRows(), usage.getNumCols());
-        for(int i = 0; i < usage.getNumRows(); i++) {
-            J.set(i, usage.get(i) / (1 - usage.get(i)));
+        for (int i = 0; i < usage.getNumRows(); i++) {
+            if (usage.get(i) < 1.01 && usage.get(i) > 0.99) J.set(i, Double.POSITIVE_INFINITY);
+            else J.set(i, usage.get(i) / (1 - usage.get(i)));
         }
         return J;
     }
 
-    static double getResponseTime(SimpleMatrix jobs, double alphaMax, double r) {
+    static SimpleMatrix getResponseTime(SimpleMatrix X, SimpleMatrix J) {
+        SimpleMatrix T = new SimpleMatrix(J.getNumRows(), J.getNumCols());
+        for (int i = 0; i < J.getNumRows(); i++) {
+            if (Double.isInfinite(J.get(i))) T.set(i, Double.POSITIVE_INFINITY);
+            else T.set(i, J.get(i) / X.get(i));
+        }
+        return T;
+
+    }
+
+    static double getSystemResponseTime(SimpleMatrix jobs, double alphaMax, double r) {
         return jobs.elementSum() / (alphaMax * r);
     }
+
     static void addMatrixToStringBuilder(StringBuilder sb, SimpleMatrix sm, int size) {
-        for(int i = 0; i < size; i++) {
-            if(i < sm.getNumElements()) {
-                sb.append(String.format("%.4f",sm.get(i))).append(',');
+        for (int i = 0; i < size; i++) {
+            if (i < sm.getNumElements()) {
+                sb.append(String.format("%.4f", sm.get(i))).append(',');
             } else sb.append("0.0000").append(',');
         }
     }
-    
+
+    static void saveChartMultiple(List<SimpleMatrix> values, double r, int kLow, String title, String xLabel, String yLabel, String filename) {
+        XYSeries Cpu = new XYSeries("CPU");
+        XYSeries D1 = new XYSeries("SysDisk 1");
+        XYSeries D2 = new XYSeries("SysDisk 2");
+        XYSeries D3 = new XYSeries("SysDisk 3");
+        XYSeries Dk = new XYSeries("UserDisk");
+
+        double maxY = 0.0;
+        int k = kLow;
+        for (SimpleMatrix sm : values) {
+            for (int i = 0; i < 5; i++) {
+                if (Double.isFinite(sm.get(i))) {
+                    maxY = Math.max(maxY, sm.get(i));
+                }
+            }
+            Cpu.add(k, Double.isFinite(sm.get(0)) ? sm.get(0) : 100);
+            D1.add(k, Double.isFinite(sm.get(1)) ? sm.get(1) : 100);
+            D2.add(k, Double.isFinite(sm.get(2)) ? sm.get(2) : 100);
+            D3.add(k, Double.isFinite(sm.get(3)) ? sm.get(3) : 100);
+            Dk.add(k, Double.isFinite(sm.get(4)) ? sm.get(4) : 100);
+            k++;
+        }
+        XYSeriesCollection collection = new XYSeriesCollection();
+        collection.addSeries(Cpu);
+        collection.addSeries(D1);
+        collection.addSeries(D2);
+        collection.addSeries(D3);
+        collection.addSeries(Dk);
+
+        JFreeChart chart = ChartFactory.createXYLineChart(title + " r = " + r, xLabel, yLabel, collection);
+        XYPlot plot = chart.getXYPlot();
+        plot.getRangeAxis().setRange(0.0, maxY * 1.1);
+        saveWhiteChart(filename, chart, plot);
+    }
+
+    static void saveChartSingle(List<Double> values, double r, int kLow, String title, String xLabel, String yLabel, String filename) {
+        XYSeries R = new XYSeries("ResponseTime");
+        int k = kLow;
+        for (Double d : values) {
+            R.add(k, d);
+            k++;
+        }
+        XYSeriesCollection collection = new XYSeriesCollection(R);
+        JFreeChart chart = ChartFactory.createXYLineChart(title + " r = " + r, xLabel, yLabel, collection);
+        XYPlot plot = chart.getXYPlot();
+        saveWhiteChart(filename, chart, plot);
+
+    }
+
+    private static void saveWhiteChart(String filename, JFreeChart chart, XYPlot plot) {
+        plot.setBackgroundPaint(Color.WHITE);
+        plot.setDomainGridlinePaint(Color.LIGHT_GRAY);
+        plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
+        try {
+            ChartUtilities.saveChartAsPNG(new File("results/" + filename + ".png"), chart, 800, 600);
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+        }
+    }
+
     static void solveNetworkAndWriteToCSV(List<SimpleMatrix> lambdas, double[] r_values, double[] base_service_times, double[] alpha_max_array, int kLow, int kHigh, double k_service_time, String filename) {
         Path path = Path.of("results/" + filename + ".csv");
         StringBuilder sb = getHeader(kHigh);
-        XYSeriesCollection collectionX = new XYSeriesCollection();
-        XYSeriesCollection collectionU = new XYSeriesCollection();
-        XYSeriesCollection collectionJ = new XYSeriesCollection();
-        XYSeriesCollection collectionT = new XYSeriesCollection();
-        
+
         for (double r : r_values) {
-            List<SimpleMatrix> XList = new ArrayList<>();
+
             List<SimpleMatrix> UList = new ArrayList<>();
-            List<SimpleMatrix> JList = new ArrayList<>();
-            List<Double> TList = new ArrayList<>();
+            List<SimpleMatrix> TList = new ArrayList<>();
+            List<Double> RList = new ArrayList<>();
             for (int k = kLow; k <= kHigh; k++) {
                 double[] service_times = extendServiceTimes(base_service_times, k, k_service_time);
                 SimpleMatrix lambda = lambdas.get(k - kLow);
@@ -189,35 +255,23 @@ public class StochasticMethod {
                 SimpleMatrix X = getThroughput(lambda, r, alpha_max);
                 SimpleMatrix U = getUsage(X, service_times);
                 SimpleMatrix J = getAvgJobs(U);
-                double T = getResponseTime(J, alpha_max, r);
+                SimpleMatrix T = getResponseTime(X, J);
+                double R = getSystemResponseTime(J, alpha_max, r);
                 sb.append(k).append(',').append(r).append(',');
                 addMatrixToStringBuilder(sb, U, base_service_times.length + kHigh);
                 addMatrixToStringBuilder(sb, X, base_service_times.length + kHigh);
                 addMatrixToStringBuilder(sb, J, base_service_times.length + kHigh);
-                sb.append(String.format("%.4f", T));
+                sb.append(String.format("%.4f", R));
                 sb.append('\n');
-                XList.add(X);
+
                 UList.add(U);
-                JList.add(J);
                 TList.add(T);
-            }      
-            XYSeries Xseries = new XYSeries(r);
-            XYSeries Useries = new XYSeries(r);
-            XYSeries Jseries = new XYSeries(r);
-            XYSeries Tseries = new XYSeries(r);
-            collectionX.addSeries(Xseries);
-            collectionU.addSeries(Useries);
-            collectionJ.addSeries(Jseries);
-            collectionT.addSeries(Tseries);
-        }
-        JFreeChart chartX = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
-        JFreeChart chartU = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
-        JFreeChart chartJ = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
-        JFreeChart chartT = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max(K)", collection);
-        try {
-            ChartUtilities.saveChartAsPNG(new File("results/" + filename + ".png"), chart, 800, 600);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+                RList.add(R);
+
+            }
+            saveChartMultiple(UList, r, kLow, "Iskoricenje", "K", "U", "usage_chart_r_" + r);
+            saveChartMultiple(TList, r, kLow, "Vreme odziva", "K", "T[s]", "response_chart_r_" + r);
+            saveChartSingle(RList, r, kLow, "Vreme odziva sistema", "K", "R[s]", "sys_response_chart_r_" + r);
         }
         try {
             Files.writeString(path, sb, StandardCharsets.UTF_8);
