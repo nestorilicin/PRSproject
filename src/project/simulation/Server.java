@@ -5,24 +5,20 @@ import org.ejml.simple.SimpleMatrix;
 import java.util.*;
 
 public class Server {
-
     private static final Random rand = new Random();
-    private final PoissonProcess working_flow;
-
+    private final PoissonProcess workingFlow;
     private final List<Double> transitions = new ArrayList<>();
     private final List<Server> neighbours = new ArrayList<>();
-
     private final Deque<Double> jobs = new ArrayDeque<>();
-
-    private double lastJobUpdate = 0.0;
-    private double jobs_number = 0.0;
-    private double jobs_has = 0.0;
-    private int jobs_done = 0;
+    private double lastJobTimestamp = 0.0;
+    private double numberOfJobs = 0.0;
+    private double hasJobsTime = 0.0;
+    private int jobsDone = 0;
+    private boolean busy = false;
 
     public Server(double processingTime, SimpleMatrix probabilities) {
-        this.working_flow = new PoissonProcess(1 / processingTime);
+        this.workingFlow = new PoissonProcess(1 / processingTime);
         double sum = probabilities.elementSum();
-        if (sum > 1.0) throw new IllegalStateException("Sum of transitions more than 1.0");
         if (sum > 0.0) {
             double current = 0.0;
             for (int i = 0; i < probabilities.getNumElements(); i++) {
@@ -34,7 +30,6 @@ public class Server {
                 }
             }
         } // else end: no neighbours
-
     }
 
     public void connectNeighbours(List<Server> servers) {
@@ -44,24 +39,25 @@ public class Server {
         neighbours.addAll(servers);
     }
 
-    public void addJob(double job, double currentTime, PriorityQueue<Event> events) {
-        if (jobs.isEmpty()) {
-            events.add(new Event(currentTime + working_flow.nextEvent(), EventType.OUT, this));
+    public void addJob(double jobTimestamp, double currentTime, PriorityQueue<Event> events) {
+        double timeDiff = currentTime - lastJobTimestamp;
+        lastJobTimestamp = currentTime;
+        numberOfJobs += jobs.size() * timeDiff;
+        hasJobsTime += (jobs.isEmpty() ? 0.0 : 1.0) * timeDiff;
+        jobs.addLast(jobTimestamp);
+        if (!busy) {
+            busy = true;
+            events.add(new Event(currentTime + workingFlow.nextEvent(), EventType.OUT, this));
         }
-        double dt = currentTime - lastJobUpdate;
-        lastJobUpdate = currentTime;
-        jobs_number += jobs.size() * dt;
-        jobs_has += (jobs.isEmpty() ? 0.0 : 1.0) * dt;
-        jobs.addLast(job);
     }
 
     public void doneJob(double currentTime, PriorityQueue<Event> events, List<Double> responseTimes) {
-        double dt = currentTime - lastJobUpdate;
-        lastJobUpdate = currentTime;
-        jobs_number += jobs.size() * dt;
-        jobs_has += (jobs.isEmpty() ? 0.0 : 1.0) * dt;
+        double timeDiff = currentTime - lastJobTimestamp;
+        lastJobTimestamp = currentTime;
+        numberOfJobs += jobs.size() * timeDiff;
+        hasJobsTime += (jobs.isEmpty() ? 0.0 : 1.0) * timeDiff;
         double job = jobs.removeFirst();
-        jobs_done++;
+        jobsDone++;
         Server nextServer = null;
         if (!transitions.isEmpty()) {
             double randomNumber = rand.nextDouble();
@@ -75,24 +71,26 @@ public class Server {
                 nextServer.addJob(job, currentTime, events);
             }
         } else {
+            // job leaves the system
             responseTimes.add(currentTime - job);
         }
-
-        if (!jobs.isEmpty() && !(nextServer == this && jobs.size() == 1)) {
-            events.add(new Event(currentTime + working_flow.nextEvent(), EventType.OUT, this));
+        if (jobs.isEmpty()) {
+            busy = false;
+        } else {
+            events.add(new Event(currentTime + workingFlow.nextEvent(), EventType.OUT, this));
         }
     }
 
     public double getX(double currentTime) {
-        return jobs_done / currentTime;
+        return jobsDone / currentTime;
     }
 
     public double getJ(double currentTime) {
-        return jobs_number / currentTime;
+        return numberOfJobs / currentTime;
     }
 
     public double getU(double currentTime) {
-        return jobs_has / currentTime;
+        return hasJobsTime / currentTime;
     }
 
 }

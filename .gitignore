@@ -31,3 +31,5 @@ bin/
 
 *.csv
 *.png
+*.docx
+*.pdf
