@@ -20,7 +20,7 @@ import java.util.List;
 import static project.Utility.*;
 import static project.Values.*;
 
-public class StochasticMethod {
+public class Analytic {
 
     static List<SimpleMatrix> getLambdas(int kLow, int kHigh) {
         ArrayList<SimpleMatrix> lambdas = new ArrayList<>();
@@ -73,23 +73,7 @@ public class StochasticMethod {
         XYPlot plot = chart.getXYPlot();
         saveWhiteChart(filename, chart, plot);
     }
-
-    static StringBuilder getHeader(int kHigh) {
-        StringBuilder sb = new StringBuilder("K,r,Up,Ud1,Ud2,Ud3,");
-        for (int i = 1; i <= kHigh; i++) {
-            sb.append("Uk").append(i).append(",");
-        }
-        sb.append("Xp,Xd1,Xd2,Xd3,");
-        for (int i = 1; i <= kHigh; i++) {
-            sb.append("Xk").append(i).append(",");
-        }
-        sb.append("Jp,Jd1,Jd2,Jd3,");
-        for (int i = 1; i <= kHigh; i++) {
-            sb.append("Jk").append(i).append(",");
-        }
-        sb.append("T\n");
-        return sb;
-    }
+    
 
     static SimpleMatrix getUsage(SimpleMatrix X, double[] service_times) {
         return SimpleMatrix.diag(service_times).mult(new SimpleMatrix(X));

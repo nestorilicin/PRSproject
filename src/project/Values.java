@@ -16,4 +16,5 @@ public final class Values {
             {0.35, 0, 0, 0.25}});
     public static final String alpha_char = "α";
     public static final String lambda_char = "λ";
+    public static double[] amaxArray = {80., 120., 160., 160.}; // calculated analyticaly
 }

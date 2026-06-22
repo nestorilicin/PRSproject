@@ -2,14 +2,16 @@ package project.simulation;
 
 import org.ejml.simple.SimpleMatrix;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.PriorityQueue;
 
-import static project.Utility.extendServiceTimes;
-import static project.Utility.getP;
-import static project.Values.K_SERVICE_TIME;
-import static project.Values.base_service_times;
+import static project.Utility.*;
+import static project.Values.*;
 
 public class Simulation {
     private final int k;
@@ -26,7 +28,6 @@ public class Simulation {
         //P.print("%.4f");
         double[] service_times = extendServiceTimes(base_service_times, k, K_SERVICE_TIME);
         double alpha = r * amax;
-
         List<Server> servers = new ArrayList<>();
         for (int i = 0; i < P.getNumRows(); i++) {
             servers.add(new Server(service_times[i], P.getRow(i)));
@@ -85,22 +86,101 @@ public class Simulation {
         return T;
     }
 
-    public static void main(String[] args) {
-        int k = 3;
-        double r = 0.8;
-        int simulationTime = 10000;
-        double amax = 120.0;
-        Simulation s = new Simulation(k, r, simulationTime, amax);
-        List<Double> usageList = s.getUList();
-        for (Double u : usageList) {
-            System.out.println(u);
+
+    static void addSimulationToStringBuilder(StringBuilder sb, int k, double r, List<Double> UList, List<Double> XList, List<Double> JList, double T, int size) {
+        sb.append(k).append(',').append(r).append(',');
+        for (int i = 0; i < size; i++) {
+            if (i < UList.size()) {
+                sb.append(String.format("%.4f", UList.get(i))).append(',');
+            } else sb.append("0.0000").append(',');
         }
-        System.out.println(s.getT());
-        System.out.println(s.getK());
-        System.out.println(s.getR());
-        System.out.println(s.getXList());
-        System.out.println(s.getJList());
-        // expected 0.1606
+        for (int i = 0; i < size; i++) {
+            if (i < XList.size()) {
+                sb.append(String.format("%.4f", XList.get(i))).append(',');
+            } else sb.append("0.0000").append(',');
+        }
+        for (int i = 0; i < size; i++) {
+            if (i < JList.size()) {
+                sb.append(String.format("%.4f", JList.get(i))).append(',');
+            } else sb.append("0.0000").append(',');
+        }
+        sb.append(String.format("%.4f", T)).append('\n');
+    }
+
+    public static void singleSimulationToCsv(int kLow, int kHigh, double[] r_values, int simulationTime, double[] amaxArray, String filename) {
+        Path path = Path.of("results/" + filename + ".csv");
+        StringBuilder sb = getHeader(kHigh);
+        int size = base_service_times.length + kHigh;
+        for (double r : r_values) {
+            for (int k = kLow; k <= kHigh; k++) {
+                Simulation sim = new Simulation(k, r, simulationTime, amaxArray[k - kLow]);
+                addSimulationToStringBuilder(sb, sim.getK(), sim.getR(), sim.getUList(), sim.getXList(), sim.getJList(), sim.getT(), size);
+            }
+        }
+        try {
+            Files.writeString(path, sb, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+        }
+    }
+
+    public static void averageMultipleSimultaionToCsv(int kLow, int kHigh, double[] r_values, int simulationTime, double[] amaxArray, String filename, int count) {
+        Path path = Path.of("results/" + filename + ".csv");
+        StringBuilder sb = getHeader(kHigh);
+        int size = base_service_times.length + kHigh;
+        for (double r : r_values) {
+            for (int k = kLow; k <= kHigh; k++) {
+                int arraysSize = size - kHigh + k;
+                double[] sumU = new double[arraysSize];
+                double[] sumX = new double[arraysSize];
+                double[] sumJ = new double[arraysSize];
+                double sumT = 0.0;
+                System.out.println("r = " + r + " k = " + k);
+                for (int i = 0; i < count; i++) {
+                    System.out.println("Simulacija #" + i);
+                    Simulation sim = new Simulation(k, r, simulationTime, amaxArray[k - kLow]);
+                    List<Double> uList = sim.getUList();
+                    List<Double> xList = sim.getXList();
+                    List<Double> jList = sim.getJList();
+                    for (int j = 0; j < uList.size(); j++) {
+                        sumU[j] += uList.get(j);
+                        sumX[j] += xList.get(j);
+                        sumJ[j] += jList.get(j);
+                    }
+                    sumT += sim.getT();
+                }
+                List<Double> avgUList = new ArrayList<>();
+                List<Double> avgXList = new ArrayList<>();
+                List<Double> avgJList = new ArrayList<>();
+
+                for (int j = 0; j < sumU.length; j++) {
+                    avgUList.add(sumU[j] / count);
+                    avgXList.add(sumX[j] / count);
+                    avgJList.add(sumJ[j] / count);
+                }
+
+                double avgT = sumT / count;
+                addSimulationToStringBuilder(sb, k, r, avgUList, avgXList, avgJList, avgT, size);
+            }
+        }
+        try {
+            Files.writeString(path, sb, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+        }
+    }
+
+    public static void main(String[] args) {
+        int simulationTime = 30 * 60; // in seconds
+        int count = 100;
+        singleSimulationToCsv(kLow, kHigh, r_values, simulationTime, amaxArray, "rezultati_simulacija");
+        System.out.println("Startovanje " + count + " simulacija za svaki par k i r");
+        long startTime =  System.nanoTime();
+        averageMultipleSimultaionToCsv(kLow, kHigh, r_values, simulationTime, amaxArray, "rezultati_simulacija_usrednjeno", count);
+        long endTime = System.nanoTime();
+        long durationMs = (endTime - startTime) / 1000000;
+        long durationS = durationMs / 1000;
+        System.out.println("Vreme izvrsavanja: " + durationS + " sekundi");
     }
 
 }

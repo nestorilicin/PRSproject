@@ -54,4 +54,21 @@ public class Utility {
         System.out.println(k + "\t" + String.format("%.2f", alphaMax) + "\t\t" + critical);
         return alphaMax;
     }
+    
+    public static StringBuilder getHeader(int kHigh) {
+        StringBuilder sb = new StringBuilder("K,r,Up,Ud1,Ud2,Ud3,");
+        for (int i = 1; i <= kHigh; i++) {
+            sb.append("Uk").append(i).append(",");
+        }
+        sb.append("Xp,Xd1,Xd2,Xd3,");
+        for (int i = 1; i <= kHigh; i++) {
+            sb.append("Xk").append(i).append(",");
+        }
+        sb.append("Jp,Jd1,Jd2,Jd3,");
+        for (int i = 1; i <= kHigh; i++) {
+            sb.append("Jk").append(i).append(",");
+        }
+        sb.append("T\n");
+        return sb;
+    }
 }
