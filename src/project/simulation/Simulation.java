@@ -171,12 +171,13 @@ public class Simulation {
     }
 
     public static void main(String[] args) {
-        int simulationTime = 30 * 60; // in seconds
-        int count = 100;
-        singleSimulationToCsv(kLow, kHigh, r_values, simulationTime, amaxArray, "rezultati_simulacija");
+        int simulationTimeMinutes = args.length > 0 ? Integer.parseInt(args[0]) : 30;
+        int simulationTimeSeconds = simulationTimeMinutes * 60; // in seconds
+        int count = args.length > 1 ? Integer.parseInt(args[1]) : 100;
+        singleSimulationToCsv(kLow, kHigh, r_values, simulationTimeSeconds, amaxArray, "rezultati_simulacija");
         System.out.println("Startovanje " + count + " simulacija za svaki par k i r");
         long startTime =  System.nanoTime();
-        averageMultipleSimultaionToCsv(kLow, kHigh, r_values, simulationTime, amaxArray, "rezultati_simulacija_usrednjeno", count);
+        averageMultipleSimultaionToCsv(kLow, kHigh, r_values, simulationTimeSeconds, amaxArray, "rezultati_simulacija_usrednjeno", count);
         long endTime = System.nanoTime();
         long durationMs = (endTime - startTime) / 1000000;
         long durationS = durationMs / 1000;
