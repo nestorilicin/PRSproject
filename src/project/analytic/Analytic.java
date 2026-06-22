@@ -69,14 +69,14 @@ public class Analytic {
             series.add(kLow + i, alphas[i]);
         }
         XYSeriesCollection collection = new XYSeriesCollection(series);
-        JFreeChart chart = ChartFactory.createScatterPlot(alpha_char + "max(K)", "K", alpha_char + "max", collection);
+        JFreeChart chart = ChartFactory.createXYLineChart(alpha_char + "max(K)", "K", alpha_char + "max", collection);
         XYPlot plot = chart.getXYPlot();
         saveWhiteChart(filename, chart, plot);
     }
     
 
     static SimpleMatrix getUsage(SimpleMatrix X, double[] service_times) {
-        return SimpleMatrix.diag(service_times).mult(new SimpleMatrix(X));
+        return SimpleMatrix.diag(service_times).mult(X);
     }
 
     static SimpleMatrix getThroughput(SimpleMatrix lambda, double alphaMax, double r) {
@@ -222,7 +222,7 @@ public class Analytic {
         // 1)
         lambdasToCSV(kLow, lambdas, "protoci_analiticki");
         // 2)
-        System.out.println("K\t" + alpha_char + "max\t\t" + "critical");
+        System.out.println("K\t" + alpha_char + "max\t" + "critical");
         double[] alphaMaxArray = new double[lambdas.size()];
         for (SimpleMatrix lambda : lambdas) {
             int index = lambdas.indexOf(lambda);

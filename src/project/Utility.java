@@ -51,7 +51,7 @@ public class Utility {
             case 3 -> "Sd3";
             default -> "Sdk";
         };
-        System.out.println(k + "\t" + String.format("%.2f", alphaMax) + "\t\t" + critical);
+        System.out.println(k + "\t" + String.format("%.2f", alphaMax) + "\t" + critical);
         return alphaMax;
     }
     
